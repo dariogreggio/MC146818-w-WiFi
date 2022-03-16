@@ -54,6 +54,11 @@
 #include "at_winc1500.h"
 
 
+
+BYTE UserRAM[50];
+BYTE Registers[4];
+
+
 #define DEFAULT_YEARS               0x0021
 #define DEFAULT_MONTH_DAY           0x0830
 #define DEFAULT_WEEKDAY_HOURS       0x0121
@@ -75,6 +80,10 @@ static const char months[13][4] = {
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
   };
 int isleap(int year);
+
+const char CopyrightString[]= {'M','C','1','4','6','8','1','8',' ','E','m','u','l','a','t','o','r',' ','-',' ','v',
+	VERNUMH+'0','.',VERNUML/10+'0',(VERNUML % 10)+'0', ' ','-',' ', '1','6','/','0','3','/','2','2', 0 };
+
 
 
 int main() {

@@ -14,6 +14,8 @@ extern "C" {
 
     
 #define _XTAL_FREQ 32000000UL
+#define VERNUMH 0
+#define VERNUML 1
 
 typedef unsigned char BYTE;
 typedef unsigned int WORD;
