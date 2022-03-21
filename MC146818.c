@@ -82,7 +82,7 @@ static const char months[13][4] = {
 int isleap(int year);
 
 const char CopyrightString[]= {'M','C','1','4','6','8','1','8',' ','E','m','u','l','a','t','o','r',' ','-',' ','v',
-	VERNUMH+'0','.',VERNUML/10+'0',(VERNUML % 10)+'0', ' ','-',' ', '1','6','/','0','3','/','2','2', 0 };
+	VERNUMH+'0','.',VERNUML/10+'0',(VERNUML % 10)+'0', ' ','-',' ', '2','1','/','0','3','/','2','2', 0 };
 
 
 
@@ -90,14 +90,16 @@ int main() {
   
   CLRWDT();
 
-  CFGCONbits.IOLOCK = 0;      // PPS Unlock
-  RPF2Rbits.RPF2R = 12;        // Assign RPF2 as OC1, pin 57
+//  di();
+  PPSLOCK=0x55;
+  PPSLOCK=0xAA;
+  PPSLOCKbits.PPSLOCKED = 0;      // PPS Unlock
+//  ei();
+  RC2PPS = 0x0a;        // Assign RC2 as CCP2, pin 32
 
-  RPD3Rbits.RPD3R = 5;        // Assign RPD3 as SDO1, pin 78
-  SDI1Rbits.SDI1R = 0;        // Assign RPD2 as SDI1, pin 77
-
-  RPD11Rbits.RPD11R = 8;        // Assign RPD11 as SDO4, pin 70
-  SDI4Rbits.SDI4R = 11;      // Assign RPD15 as SDI4, pin 48
+  SSP1DATPPSbits.SSP1DATPPS = 0x0;     // SDI RC4, pin 38
+  RC6PPS = 0x14;    //SDO RC6, pin 40
+  RC3PPS = 0x13;    //SCK RC3, pin 33
 
 #if 0
   RPB0Rbits.RPB0R = 15;        // RefClk3 su pin 57 (RF2)
@@ -109,13 +111,11 @@ int main() {
 	TRISFbits.TRISF2=1;
 #endif
   
-  SYSKEY = 0x00000000;
-  SYSKEY = 0xAA996655;
-  SYSKEY = 0x556699AA;
-  CFGCONbits.OCACLK=1;      // sceglie timer per PWM [serve SYSLOCK cmq)
-  SYSKEY = 0x00000000;
-  
-  CFGCONbits.IOLOCK = 1;      // PPS Lock
+//  di();
+  PPSLOCK=0x55;
+  PPSLOCK=0xAA;
+  PPSLOCKbits.PPSLOCKED = 0;      // PPS Lock
+//  ei();
 
   
   ANSELA=0;
@@ -144,13 +144,14 @@ int main() {
   WPUB=0b11111111;   // boh
   WPUC=0b00000000;   // 
   WPUD=0b00000100;   // 
-  WPUE=0b11111111;   // altrimenti la PMP fluttua..; SDCD
+  WPUE=0b11111111;   // 
 
   
   UserInit();
     
   Timer_Init();
   PWM_Init();
+  
 
   
   #ifdef USA_WIFI
@@ -203,6 +204,23 @@ int main() {
   	m2m_wifi_handle_events(NULL);
 #endif
     
+    if(m_STBY) {
+      //ATTIVARE IRQ!
+      }
+    else {
+      //DISATTIVARE IRQ! e fare sleep?? ecc...
+      }
+    
+    // gestire UIP qua? Register[0] ... ci si potrebbe mettere RTCCONbits.HALFSEC
+    // gestire Daylight e 12/24... Register[1] 0..1  ...
+    
+    if(m_PS) {      // o usare analogico?
+      Registers[3] |= 0b10000000;
+      }
+    else {
+      Registers[3] &= ~0b10000000;
+      }
+    
     CLRWDT();
     }
 
@@ -218,34 +236,36 @@ void UserInit(void) {
 
 void Timer_Init(void) {
   
+  T0CON0=0; T0CON1=0;
+  T0CON1bits.T0CS = 0b010;       // clock from clock/4
+#warning finire TIMER !
+  T0CON1bits.T0CKPS = 0b1000;      // 1:256 prescaler 
+  TMR0 = 39062;                 // 10Hz x clock
+  
+  PIR0bits.TMR0IF=0;
+  PIE0bits.TMR0IE=1;             // enable Timer 0 interrupt se si vuole
+  
+  T0CON0bits.T0EN = 1;    // start timer (for clock)
+  
   T1CON=0;
-  T1CONbits.TCS = 0;            // clock from peripheral clock
-  T1CONbits.TCKPS = 0b11;      // 1:256 prescaler 
-  PR1 = 39062;                 // 10Hz x clock
+  T1CLKbits.CS = 0b1000;            // clock from clock/4
+  T1CONbits.CKPS = 0b10;      // 1:4 prescaler 
+  TMR1 = 6250;                   // 4KHz x buzzer ????
   
-  IPC1bits.T1IP=2;            // set IPL 2, sub-priority 2??
-  IPC1bits.T1IS=0;
-  IEC0bits.T1IE=1;             // enable Timer 3 interrupt se si vuole
+  T1CONbits.ON = 1;    // start timer (for pwm)
   
-  T1CONbits.TON = 1;    // start timer (for clock)
-  
-  T4CON=0;
-  T4CONbits.TCS = 0;            // clock from peripheral clock
-  T4CONbits.TCKPS = 0b010;      // 1:4 prescaler 
-  T4CONbits.T32 = 0;            // 16bit
-  PR4 = 6250;                   // 4KHz x buzzer
-  
-  T4CONbits.TON = 1;    // start timer (for pwm)
+#warning sERVE QUA TIMER per pwm??
   }
   
 void PWM_Init(void) {
 
 // v. init sopra  CFGCONbits.OCACLK=1;      // sceglie timer per PWM ossia Timer6 ;) [serve SYSLOCK cmq)
   
-  OC1CON = 0x0006;      // TimerX ossia Timer6; PWM mode no fault; Timer 16bit, TimerX
-  OC1R    = 6250/2;		 // su PIC32 è read-only!
-  OC1RS   = 6250/2;      // 50%, relativo a PR2 del Timer6
-  OC1CONbits.ON=0;    // on
+  CCP2CON = 0x0F;      // PWM mode no fault; right aligned
+  CCPR1L = 6250/2;		 // su PIC32 è read-only!
+#warning finire PWM CCP
+  CCPR1H = 6250/2;      // 50%, relativo a PR2 del Timer6
+  CCP2CONbits.EN=0;    // on
 
   }
 
@@ -255,14 +275,14 @@ void RTCC_Init(void) {
   
 	UnlockRTCC();
   
-  RTCCONbits.CAL=0;
-  RTCCONbits.RTCCLKSEL=0b01;      // ext xtal
-  RTCCONbits.RTCOUTSEL=0b01;      // seconds clock su RTCC pin out
-  RTCCONbits.RTCOE=1;      // idem
+  RTCCAL=0;
+  RTCCONbits.RTCCLKSEL=0b00;      // ext xtal
+  RTCCONbits.RTCEN=1;      // idem
 
-  RTCALRM=0;
+  ALRMCON=0;
+  ALRMRPT=0;
   
-  RTCCONbits.ON=1;
+  RTCCONbits.RTCEN=1;
   
 	LockRTCC();
   }
@@ -291,15 +311,19 @@ void RTCC_Init(void) {
 
   ***************************************************************************/
 DWORD PIC16RTCCGetDate(void) {
-  unsigned int timeCopy1, timeCopy2;
+  unsigned long timeCopy1, timeCopy2;
   
   if(RTCCONbits.RTCSYNC == 0)  {
-    return RTCDATE; // return time
+    return MAKELONG(MAKEWORD(DAY,WEEKDAY),MAKEWORD(MONTH,YEAR)); // return date
     }
   else  {
     // read time twice and compare result, retry until a match occurs
-    while( (timeCopy1 = RTCDATE) != (timeCopy2 = RTCDATE) )
+    //v. anche RTCCONbits.RTCSYNC
+    do {
+      timeCopy1=MAKELONG(MAKEWORD(DAY,WEEKDAY),MAKEWORD(MONTH,YEAR));
+      timeCopy2=MAKELONG(MAKEWORD(DAY,WEEKDAY),MAKEWORD(MONTH,YEAR));
       CLRWDT();
+      } while(timeCopy1 != timeCopy2);
     return timeCopy1; // return time when both reads matched
     }
   }
@@ -329,15 +353,19 @@ DWORD PIC16RTCCGetDate(void) {
   ***************************************************************************/
 
 DWORD PIC16RTCCGetTime(void) {
-  unsigned int timeCopy1, timeCopy2;
+  unsigned long timeCopy1, timeCopy2;
   
   if(RTCCONbits.RTCSYNC == 0) {
-    return RTCTIME; // return time
+    return MAKELONG(MAKEWORD(DAY,WEEKDAY),MAKEWORD(MONTH,YEAR)); // return time
     }
   else {
     // read time twice and compare result, retry until a match occurs
-    while( (timeCopy1 = RTCTIME) != (timeCopy2 = RTCTIME) )
+    //v. anche RTCCONbits.RTCSYNC
+    do {
+      timeCopy1=MAKELONG(MAKEWORD(DAY,WEEKDAY),MAKEWORD(MONTH,YEAR));
+      timeCopy2=MAKELONG(MAKEWORD(DAY,WEEKDAY),MAKEWORD(MONTH,YEAR));
       CLRWDT();
+      } while(timeCopy1 != timeCopy2);
     return timeCopy1; // return time when both reads matched
     }
 	}
@@ -367,12 +395,12 @@ DWORD PIC16RTCCGetTime(void) {
 void PIC16RTCCSetDate(WORD xx_year, WORD month_day) {
 
 	UnlockRTCC();
-  RTCDATEbits.YEAR10 = LOBYTE(xx_year) / 10;
-  RTCDATEbits.YEAR01 = LOBYTE(xx_year) % 10;
-  RTCDATEbits.MONTH10=from_bcd(HIBYTE(month_day)) / 10;
-  RTCDATEbits.MONTH01=from_bcd(HIBYTE(month_day)) % 10;
-  RTCDATEbits.DAY10=from_bcd(LOBYTE(month_day)) / 10;
-  RTCDATEbits.DAY01=from_bcd(LOBYTE(month_day)) % 10;
+  YEARbits.YEARH = LOBYTE(xx_year) / 10;
+  YEARbits.YEARL = LOBYTE(xx_year) % 10;
+  MONTHbits.MONTHL=from_bcd(HIBYTE(month_day)) / 10;
+  MONTHbits.MONTHH=from_bcd(HIBYTE(month_day)) % 10;
+  DAYbits.DAYH=from_bcd(LOBYTE(month_day)) / 10;
+  DAYbits.DAYL=from_bcd(LOBYTE(month_day)) % 10;
 	LockRTCC();
   
 	}
@@ -403,13 +431,13 @@ void PIC16RTCCSetDate(WORD xx_year, WORD month_day) {
 void PIC16RTCCSetTime(WORD weekDay_hours, WORD minutes_seconds) {
 
   UnlockRTCC();
-  RTCDATEbits.WDAY01=HIBYTE(weekDay_hours);
-  RTCTIMEbits.HR10 = from_bcd(LOBYTE(weekDay_hours)) / 10;
-  RTCTIMEbits.HR01 = from_bcd(LOBYTE(weekDay_hours)) % 10;
-  RTCTIMEbits.MIN10 = from_bcd(HIBYTE(minutes_seconds)) / 10;
-  RTCTIMEbits.MIN01 = from_bcd(HIBYTE(minutes_seconds)) % 10;
-  RTCTIMEbits.SEC10 = from_bcd(LOBYTE(minutes_seconds)) / 10;
-  RTCTIMEbits.SEC01 = from_bcd(LOBYTE(minutes_seconds)) % 10;
+  WEEKDAYbits.WDAY=HIBYTE(weekDay_hours);
+  HOURSbits.HRH = from_bcd(LOBYTE(weekDay_hours)) / 10;
+  HOURSbits.HRL = from_bcd(LOBYTE(weekDay_hours)) % 10;
+  MINUTESbits.MINH = from_bcd(HIBYTE(minutes_seconds)) / 10;
+  MINUTESbits.MINL = from_bcd(HIBYTE(minutes_seconds)) % 10;
+  SECONDSbits.SECH = from_bcd(LOBYTE(minutes_seconds)) / 10;
+  SECONDSbits.SECL = from_bcd(LOBYTE(minutes_seconds)) % 10;
 	LockRTCC();
 
 	}
@@ -417,16 +445,16 @@ void PIC16RTCCSetTime(WORD weekDay_hours, WORD minutes_seconds) {
 void PIC16RTCCSetAlarm(BYTE month, BYTE day, BYTE hours, BYTE minutes, BYTE seconds) {
 
   UnlockRTCC();
-  ALRMDATEbits.MONTH10=from_bcd(month) / 10;
-  ALRMDATEbits.MONTH01=from_bcd(month) % 10;
-  ALRMDATEbits.DAY10=from_bcd(day) / 10;
-  ALRMDATEbits.DAY01=from_bcd(day) % 10;
-  ALRMTIMEbits.HR10 = from_bcd(hours) / 10;
-  ALRMTIMEbits.HR01 = from_bcd(hours) % 10;
-  ALRMTIMEbits.MIN10 = from_bcd(minutes) / 10;
-  ALRMTIMEbits.MIN01 = from_bcd(minutes) % 10;
-  ALRMTIMEbits.SEC10 = from_bcd(seconds) / 10;
-  ALRMTIMEbits.SEC01 = from_bcd(seconds) % 10;
+  ALRMMTHbits.MTHALRMH0=from_bcd(month) / 10;
+  ALRMMTHbits.MTHALRML=from_bcd(month) % 10;
+  ALRMDAYbits.DAYALRMH=from_bcd(day) / 10;
+  ALRMDAYbits.DAYALRML=from_bcd(day) % 10;
+  ALRMHRbits.HRALRMH= from_bcd(hours) / 10;
+  ALRMHRbits.HRALRML= from_bcd(hours) % 10;
+  ALRMMINbits.MINALRMH= from_bcd(minutes) / 10;
+  ALRMMINbits.MINALRML= from_bcd(minutes) % 10;
+  ALRMSECbits.SECALRMH= from_bcd(seconds) / 10;
+  ALRMSECbits.SECALRML= from_bcd(seconds) % 10;
 	LockRTCC();
 
 	}
@@ -451,8 +479,8 @@ void PIC16RTCCSetAlarm(BYTE month, BYTE day, BYTE hours, BYTE minutes, BYTE seco
     
   ***************************************************************************/
 
-#define RTCC_INTERRUPT_REGISTER IEC5
-#define RTCC_INTERRUPT_VALUE    0x0040
+#define RTCC_INTERRUPT_REGISTER PIR8
+#define RTCC_INTERRUPT_VALUE    0x40
 
 void UnlockRTCC(void) {
   BOOL interruptsWereOn;
@@ -464,10 +492,7 @@ void UnlockRTCC(void) {
     RTCC_INTERRUPT_REGISTER &= ~RTCC_INTERRUPT_VALUE;
     }
   
-  SYSKEY = 0xaa996655; // write first unlock key to SYSKEY
-  SYSKEY = 0x556699aa;
   RTCCONbits.RTCWREN=1;      // 
-  SYSKEY = 0x00000000;
   
   if(interruptsWereOn) {
     RTCC_INTERRUPT_REGISTER |= RTCC_INTERRUPT_VALUE;
@@ -476,10 +501,17 @@ void UnlockRTCC(void) {
 	}
 void LockRTCC(void) {
 
-  SYSKEY = 0xaa996655; // write first unlock key to SYSKEY
-  SYSKEY = 0x556699aa;
   RTCCONbits.RTCWREN=0;      // 
-  SYSKEY = 0x00000000;
+	}
+
+BYTE to_bcd(BYTE n) {
+	
+	return (n % 10) | ((n / 10) << 4);
+	}
+
+BYTE from_bcd(BYTE n) {
+	
+	return (n & 15) + (10*(n >> 4));
 	}
 
 
@@ -1179,7 +1211,8 @@ invalid_request:
 
 void SetTimeFromNow(DWORD now,PIC16_DATE *date,PIC16_TIME *time) {
   unsigned int i,y;
-  unsigned long d,j;
+  long d;
+  unsigned long j;
   
   d= now + ((signed long)timeZone)*3600;         // Correct for TZ/DST offset
   d= d / 86400L;                          // Integer number of days
@@ -1214,8 +1247,221 @@ void SetTimeFromNow(DWORD now,PIC16_DATE *date,PIC16_TIME *time) {
 
 
   
-void __ISR ( _CHANGE_NOTICE_F_VECTOR, IPL3SRS ) CNFInt(void) {
+void interrupt IRQhandler(void) {   // interrupt su AS / m_AS ... FARE!
+  BYTE reg;
+  static BYTE oldReg;
+
+  if(!m_CE) {
+    if(!m_MOT) {    // in teoria lo legge solo alla partenza/accensione...
+      if(!m_RW) {
+        TRISB=0b11111111;   // occhio ai tempi...
+        reg=PORTB;
+        if(!m_AS)
+          oldReg=reg & 63;
+        else {
+assign_reg:
+          switch(oldReg) {
+            case 0:
+              if(Registers[1] & 0b00000100)    // DataMode
+                SECONDS=to_bcd(reg);
+              else
+                SECONDS=reg;
+              break;
+            case 1:
+              if(Registers[1] & 0b00000100)
+                ALRMSEC=to_bcd(reg);
+              else
+                ALRMSEC=reg;
+              break;
+            case 2:
+              if(Registers[1] & 0b00000100)
+                MINUTES=to_bcd(reg);
+              else
+                MINUTES=reg;
+              break;
+            case 3:
+              if(Registers[1] & 0b00000100)
+                ALRMMIN=to_bcd(reg);
+              else
+                ALRMMIN=reg;
+              break;
+            case 4:
+              if(Registers[1] & 0b00000100)
+                HOURS=to_bcd(reg);
+              else
+                HOURS=reg;
+              break;
+            case 5:
+              if(Registers[1] & 0b00000100)
+                ALRMHR=to_bcd(reg);
+              else
+                ALRMHR=reg;
+              break;
+            case 6:
+              WEEKDAY=reg;
+              break;
+            case 7:
+              if(Registers[1] & 0b00000100)
+                DAY=to_bcd(reg);
+              else
+                DAY=reg;
+              break;
+            case 8:
+              if(Registers[1] & 0b00000100)
+                MONTH=to_bcd(reg);
+              else
+                MONTH=reg;
+              break;
+            case 9:
+              if(Registers[1] & 0b00000100)
+                YEAR=to_bcd(reg);
+              else
+                YEAR=reg;
+              break;
+            case 10:
+              Registers[1]=reg;
+              CCPR1L = Registers[0] & 0b00001111;    // FARE!! finire
+              // 0b01110000    // sarebbe timebase divider da clock..
+              break;
+            case 11:
+              Registers[1]=reg;
+              if(Registers[1] & 0b00001000) {     // SQWE
+                CCP2CONbits.EN=1;
+                }
+              else {
+                CCP2CONbits.EN=0;
+                }
+              if(Registers[1] & 0b00000001) {     // SET
+                // fermare RTC...
+                }
+              else {
+                }
+//              if(Registers[1] & 0b01000000) {     // AIE alarm...
+              //ALRMCONbits.ALRMEN
+                      break;
+            case 12:      // read-only
+              break;
+            case 13:      // read-only
+              break;
+            default:
+              UserRAM[oldReg-14]=reg;
+              break;
+            }
+          }
+        }
+      else {
+// ??        if(!m_AS)
+        TRISB=0b00000000;
+read_reg:
+          switch(oldReg) {
+            case 0:
+              if(Registers[1] & 0b00000100)    // DataMode
+                LATB=from_bcd(SECONDS);
+              else
+                LATB=SECONDS;
+              break;
+            case 1:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(ALRMSEC);
+              else
+                LATB=ALRMSEC;
+              break;
+            case 2:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(MINUTES);
+              else
+                LATB=MINUTES;
+              break;
+            case 3:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(ALRMMIN);
+              else
+                LATB=ALRMMIN;
+              break;
+            case 4:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(HOURS);
+              else
+                LATB=HOURS;
+              break;
+            case 5:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(ALRMHR);
+              else
+                LATB=ALRMHR;
+              break;
+            case 6:
+              LATB=WEEKDAY;
+              break;
+            case 7:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(DAY);
+              else
+                LATB=DAY;
+              break;
+            case 8:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(MONTH);
+              else
+                LATB=MONTH;
+              break;
+            case 9:
+              if(Registers[1] & 0b00000100)
+                LATB=from_bcd(YEAR);
+              else
+                LATB=YEAR;
+              break;
+            case 10:
+              LATB=Registers[1];
+              // gestire UIP!!
+              break;
+            case 11:
+              LATB=Registers[1];
+              break;
+            case 12:
+              LATB=Registers[2];
+              Registers[2] &= ~0b11110000;
+              break;
+            case 13:
+              LATB=Registers[3];
+              break;
+            default:
+              LATB=UserRAM[oldReg-14];
+              break;
+            }
+        }
+      }
+    else {    // FINIRE gestire MOT! (se serve altro...)
+      if(!m_RW) {
+        TRISB=0b11111111;   // occhio ai tempi...
+        reg=PORTB;
+        if(!m_AS)
+          oldReg=reg & 63;
+        else
+          goto assign_reg;
+        }
+      else {
+// ??        if(!m_AS)
+        TRISB=0b00000000;
+        goto read_reg;
+        }
+      }
+    
+    }
+
+  if(PIR8bits.RTCCIF) {  
+    Registers[2] |= 0b00010000;
+    Registers[2] |= 0b00100000;
+    Registers[2] |= 0b01000000;
+    }
   
+  if(Registers[2] & 0b01110000) {     // PIE AIE UIE
+    Registers[2] |= 0b10000000;
+    if((Registers[2] & 0b01110000) && (Registers[1] & 0b01110000)) {     // PIE AIE UIE
+      m_IRQ=0;  m_IRQ ^= 1;
+      }
+    }
+
 #ifdef USA_WIFI
   if(m_WIRQ_CN) {
     extern tpfNmBspIsr gpfIsr;
@@ -1223,11 +1469,11 @@ void __ISR ( _CHANGE_NOTICE_F_VECTOR, IPL3SRS ) CNFInt(void) {
       gpfIsr();
     m_WIRQ_CN=0;
     }
-#endif
-
 //  PORTF;
 //  CNFF=0;
   IFS3bits.CNFIF=0;
+#endif
+
   }
 
 

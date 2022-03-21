@@ -15,12 +15,23 @@ extern "C" {
     
 #define _XTAL_FREQ 32000000UL
 #define VERNUMH 0
-#define VERNUML 1
+#define VERNUML 2
 
 typedef unsigned char BYTE;
 typedef unsigned int WORD;
 typedef unsigned long DWORD;
-    
+typedef unsigned char BOOL;
+
+enum { FALSE=0,TRUE=1 };
+
+#define MAKEWORD(a, b)   ((WORD) (((BYTE) (a)) | ((WORD) ((BYTE) (b))) << 8)) 
+#define MAKELONG(a, b)   ((unsigned long) (((WORD) (a)) | ((DWORD) ((WORD) (b))) << 16)) 
+//#define HIBYTE(w)   ((BYTE) ((((WORD) (w)) >> 8) /* & 0xFF*/)) 
+#define HIBYTE(w)   ((BYTE) (*((char *)&w+1)))		// molto meglio :)
+#define HIWORD(l)   ((WORD) (((DWORD) (l) >> 16) & 0xFFFF)) 
+#define LOBYTE(w)   ((BYTE) (w)) 
+#define LOWORD(l)   ((WORD) (l)) 
+
 typedef struct {
     unsigned char   weekday;    // 
     unsigned char   mday;       // 
@@ -44,10 +55,15 @@ DWORD PIC16RTCCGetTime(void);
 void PIC16RTCCSetDate(WORD xx_year, WORD month_day);
 void PIC16RTCCSetTime(WORD weekDay_hours, WORD minutes_seconds);
 void PIC16RTCCSetAlarm(BYTE month, BYTE day, BYTE hours, BYTE minutes, BYTE seconds);
+void UnlockRTCC(void);
+void LockRTCC(void);
+
+BYTE to_bcd(BYTE);
+BYTE from_bcd(BYTE);
 
     
 /** LED ************************************************************/
-#define mInitAllLEDs()      LATA &= 0xFFF7; TRISA &= 0xFFF7; 
+#define mInitAllLEDs()      LATA &= 0xF7; TRISA &= 0xF7; 
 
 #define mLED_1              LATAbits.LATA3     // pin 20
 #define mGetLED_1()         mLED_1
@@ -57,7 +73,7 @@ void PIC16RTCCSetAlarm(BYTE month, BYTE day, BYTE hours, BYTE minutes, BYTE seco
 
     
 /** SWITCH *********************************************************/
-#define mInitSwitch1()      TRISAbits.TRISA10=1;
+#define mInitSwitch1()      TRISAbits.TRISA2=1;
 
 #define mInitAllSwitches()  mInitSwitch1(); WPUAbits.WPUA2=1;
 #define sw1                 PORTAbits.RA2
@@ -88,7 +104,7 @@ void PIC16RTCCSetAlarm(BYTE month, BYTE day, BYTE hours, BYTE minutes, BYTE seco
 #define m_DS PORTDbits.RD1  		// pin 35
 #define m_RW PORTEbits.RE1         // pin 24
 #define m_STBY PORTAbits.RA1         // pin 18
-#define m_IRQ PORTDbits.LATD0         // pin 34
+#define m_IRQ LATDbits.LATD0         // pin 34
 
 #define m_CKFS PORTDbits.RD2         // pin 36
 #define m_CKOUT LATAbits.LATA0         // pin 17
